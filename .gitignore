@@ -1,0 +1,21 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
+
+# Data (raw scrapes shouldn't live in git — too large, and DB is the source of truth)
+data/raw/
+*.csv
+*.json
+!package.json
