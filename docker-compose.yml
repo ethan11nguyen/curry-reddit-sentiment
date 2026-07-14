@@ -1,7 +1,7 @@
 services:
   postgres:
     image: postgres:16
-    container_name: sga-postgres
+    container_name: curry-postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -10,14 +10,14 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - sga_pgdata:/var/lib/postgresql/data
+      - curry_pgdata:/var/lib/postgresql/data
       - ./sql:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sga_admin -d sga_sentiment"]
+      test: ["CMD-SHELL", "pg_isready -U curry_admin -d curry_sentiment"]
       interval: 5s
       timeout: 5s
       retries: 5
 
 volumes:
-  sga_pgdata:
+  curry_pgdata:
     driver: local
