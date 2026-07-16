@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS posts (
     title           TEXT NOT NULL,
     selftext        TEXT,
     author          VARCHAR(100),
-    created_utc     TIMESTAMP NOT NULL,
+    created_utc     TIMESTAMP, -- nullable bc kaggle sourced placeholder posts have no real metadata
     score           INTEGER,
     upvote_ratio    NUMERIC(4,3),
     num_comments    INTEGER,
