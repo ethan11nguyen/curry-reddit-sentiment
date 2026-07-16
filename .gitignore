@@ -19,3 +19,4 @@ data/raw/
 *.csv
 *.json
 !package.json
+.Rhistory
