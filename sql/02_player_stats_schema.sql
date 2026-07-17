@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS player_stats (
     game_id         VARCHAR(20) PRIMARY KEY,   -- nba_api GAME_ID
-    player_name     VARCHAR(100) NOT NULL DEFAULT 'Shai Gilgeous-Alexander',
+    player_name     VARCHAR(100) NOT NULL DEFAULT 'Stephen Curry',
     game_date       DATE NOT NULL,
     matchup         VARCHAR(20),               -- e.g. 'OKC vs. LAL' or 'OKC @ LAL'
     opponent        VARCHAR(10),               -- team abbreviation
