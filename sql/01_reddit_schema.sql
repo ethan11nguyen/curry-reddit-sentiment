@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS sentiment_scores (
     sentiment_score NUMERIC(6,4),               -- raw compound/polarity score, NULL until scored
     sentiment_label VARCHAR(10),                -- 'positive' | 'neutral' | 'negative', NULL until scored
     scored_at       TIMESTAMP,
+    subject_label   VARCHAR(20),                 -- LLM-only : about_curry | incidental | comparative | unclear
     UNIQUE (comment_id, model_version)          -- one score per comment per model version
 );
 
