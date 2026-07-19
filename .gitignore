@@ -17,6 +17,8 @@ venv/
 # Data (raw scrapes shouldn't live in git — too large, and DB is the source of truth)
 data/raw/
 *.csv
+!docs/validation_sample.csv
+!docs/validation_sample_with_llm.csv
 *.json
 !package.json
 .Rhistory
