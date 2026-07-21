@@ -19,6 +19,7 @@ data/raw/
 *.csv
 !docs/validation_sample.csv
 !docs/validation_sample_with_llm.csv
+!docs/validation_sample_with_llm_v2.csv
 *.json
 !package.json
 .Rhistory
