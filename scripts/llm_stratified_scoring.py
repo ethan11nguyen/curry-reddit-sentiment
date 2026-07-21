@@ -43,7 +43,7 @@ import psycopg2.extras
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
 
-MODEL_VERSION = "llm_stratified_v1"
+MODEL_VERSION = "llm_stratified_v2"
 MODEL = "meta-llama/Llama-3.1-8B-Instruct"
 PROVIDER = "auto"
 
@@ -54,32 +54,73 @@ SAMPLE_PER_DAY = 50
 
 REQUEST_DELAY_SECONDS = 1.5
 MAX_RETRIES = 3
-RETRY_DELAY_SECONDS = 5
+API_ERROR_RETRY_DELAY_SECONDS = 5
+FORMAT_RETRY_DELAY_SECONDS = 1
+
+REFUSAL_PATTERNS = [
+    "i cannot create", "i can't create", "i cannot generate", "i can't generate",
+    "i cannot help with", "i can't help with", "i'm not able to", "i am not able to",
+    "i cannot provide", "i can't provide",
+]
+
+
+def looks_like_refusal(raw):
+    lowered = raw.lower()
+    return any(pattern in lowered for pattern in REFUSAL_PATTERNS)
 
 SYSTEM_PROMPT = """You analyze Reddit comments from r/nba for sentiment specifically about \
-the basketball player Stephen Curry. Many comments mention Curry only in passing \
-while actually expressing sentiment about someone or something else (e.g. \
-comparing him to another player, or using him as a reference point). Your job \
-is to identify whether the comment expresses genuine sentiment TOWARD Curry \
-himself, and if so, what that sentiment is.
+the basketball player Stephen Curry.
 
-Respond with ONLY a JSON object, no other text, in this exact format:
+CATEGORIES:
+- "about_curry": the comment expresses genuine sentiment directed at Curry himself. \
+This INCLUDES cases where a comparison to another player is used merely as \
+rhetorical framing, as long as the substantive point is about Curry. \
+Example: "Curry could have gotten the charge, I don't know why he didn't fall \
+over" -> about_curry (negative, mild criticism of a specific Curry play). \
+Example: "CP was off of a hammy though, Steph is 100% healthy" -> about_curry \
+(positive -- states Curry's health status directly).
+- "incidental": Curry's name appears but the sentiment is genuinely about \
+someone/something else, with Curry only a reference point or aside. \
+Example: "James 'Curry' Harden" -> incidental (Curry used only as a nickname \
+for Harden -- no sentiment about Curry himself is being expressed).
+- "comparative": the comment's core point is an explicit comparison where \
+sentiment is genuinely SPLIT or the comparison itself (not either player \
+individually) is the subject. Use this only when about_curry doesn't fit \
+better -- i.e. when you truly cannot say the comment is substantively about \
+Curry specifically. Example: "Harden's a ball hog, at least Curry knows how \
+to play team ball" -> comparative (frustration is about Harden; Curry is a \
+positive reference point, not really being evaluated himself).
+- "unclear": no real sentiment expressed, or genuinely ambiguous.
+
+TIE-BREAK RULE: when in doubt between "about_curry" and "comparative", prefer \
+"about_curry" if the comment makes a specific, substantive claim about Curry \
+(his play, health, stats, character) even if phrased via comparison. Only use \
+"comparative" when the sentiment is truly about the comparison/matchup itself, \
+or is clearly directed elsewhere.
+
+If a comment is just a bare list of player names or has no real sentence \
+structure, treat it as a single item and pick the ONE category/sentiment \
+that best fits the comment as a whole -- do not analyze each name separately.
+
+If a comment is a factual question with no real sentiment (e.g. "What is \
+Curry's nickname?"), or is a joke/meme with no genuine sentiment, still \
+respond with the required JSON format -- use "unclear" as the subject with \
+"neutral" sentiment and score 0.0. Do NOT answer the question conversationally, \
+and do NOT generate additional jokes, examples, or continuations -- only \
+classify the single comment given.
+
+INSTRUCTIONS:
+First, in 1-2 sentences, briefly reason about who the sentiment is actually \
+directed at. Then, on a new line, write exactly "FINAL_ANSWER:" followed by a \
+JSON object with this exact format:
 {"subject": "about_curry" | "incidental" | "comparative" | "unclear", \
 "sentiment": "positive" | "negative" | "neutral", "score": <float from -1.0 to 1.0>}
 
-Field meanings:
-- "subject": "about_curry" if the sentiment is genuinely directed at Curry; \
-"incidental" if Curry is mentioned but the sentiment is about someone/something \
-else; "comparative" if it's a direct comparison where sentiment is split between \
-Curry and another player; "unclear" if you can't tell or there's no real sentiment.
-- "sentiment": the overall sentiment label. If subject is "incidental", this \
-should reflect sentiment toward Curry specifically (often "neutral" if none \
-is actually expressed toward him).
-- "score": -1.0 (very negative) to 1.0 (very positive), 0.0 = neutral. \
-This should reflect sentiment toward Curry specifically, not the whole comment.
-
-Respond with the JSON object ONLY. No explanation, no examples, no extra text \
-before or after it. Just the single JSON object.
+For "score": use a precise, continuous value reflecting actual intensity -- \
+avoid defaulting to round numbers like -0.5 or 0.8 unless the sentiment is \
+genuinely that extreme. A mild criticism might be -0.2, a strong one -0.7, etc. \
+If subject is "incidental", sentiment/score should reflect feeling toward \
+Curry specifically (often close to 0 if none is really expressed toward him).
 """
 
 load_dotenv()
@@ -157,6 +198,19 @@ def fetch_sample_for_day(pg_conn, day, limit):
         return cur.fetchall()
 
 
+def extract_json(raw):
+    if "FINAL_ANSWER:" in raw:
+        after = raw.split("FINAL_ANSWER:", 1)[1].strip()
+        match = re.search(r"\{.*?\}", after, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+
+    matches = re.findall(r"\{.*?\}", raw, re.DOTALL)
+    if not matches:
+        raise json.JSONDecodeError("no JSON object found", raw, 0)
+    return json.loads(matches[-1])
+
+
 def score_comment(client, body):
     last_error = None
     for attempt in range(1, MAX_RETRIES + 1):
@@ -167,26 +221,26 @@ def score_comment(client, body):
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": body},
                 ],
-                temperature=0.1,
-                max_tokens=150,
+                temperature=0.2,
+                max_tokens=250,
             )
             raw = completion.choices[0].message.content.strip()
-            cleaned = raw.strip("`").removeprefix("json").strip()
-            try:
-                parsed = json.loads(cleaned)
-            except json.JSONDecodeError:
-                match = re.search(r"\{.*?\}", raw, re.DOTALL)
-                if not match:
-                    raise
-                parsed = json.loads(match.group(0))
+
+            if looks_like_refusal(raw):
+                print(f"    model refused (detected pattern) -- not retrying: {raw[:100]!r}")
+                return None, None, None
+
+            parsed = extract_json(raw)
             return parsed.get("subject"), parsed.get("sentiment"), parsed.get("score")
         except json.JSONDecodeError as e:
             last_error = f"JSON parse failed on response: {raw!r} ({e})"
+            delay = FORMAT_RETRY_DELAY_SECONDS
         except Exception as e:
             last_error = str(e)
+            delay = API_ERROR_RETRY_DELAY_SECONDS
 
         if attempt < MAX_RETRIES:
-            time.sleep(RETRY_DELAY_SECONDS)
+            time.sleep(delay)
 
     print(f"    giving up after {MAX_RETRIES} attempts: {last_error}")
     return None, None, None
