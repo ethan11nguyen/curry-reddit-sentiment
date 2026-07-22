@@ -96,17 +96,17 @@ CREATE OR REPLACE VIEW daily_sentiment_and_performance AS
 SELECT
     d.day AS comment_date,
 
-    v.n_comments        AS vader_n_comments,
-    v.avg_sentiment_score AS vader_avg_score,
-    v.n_positive         AS vader_n_positive,
-    v.n_negative         AS vader_n_negative,
-    v.n_neutral          AS vader_n_neutral,
-
     l.n_comments        AS llm_n_comments,
     l.avg_sentiment_score AS llm_avg_score,
     l.n_positive         AS llm_n_positive,
     l.n_negative         AS llm_n_negative,
     l.n_neutral          AS llm_n_neutral,
+
+    v.n_comments        AS vader_n_comments,
+    v.avg_sentiment_score AS vader_avg_score,
+    v.n_positive         AS vader_n_positive,
+    v.n_negative         AS vader_n_negative,
+    v.n_neutral          AS vader_n_neutral,
 
     p.matchup, p.opponent, p.home_away, p.win_loss,
     p.points, p.rebounds, p.assists, p.steals, p.blocks, p.turnovers,
