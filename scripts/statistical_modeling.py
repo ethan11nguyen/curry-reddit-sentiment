@@ -37,6 +37,7 @@ from dotenv import load_dotenv
 from scipy import stats as scipy_stats
 from sqlalchemy import create_engine
 from statsmodels.stats.diagnostic import het_breuschpagan, het_white
+from statsmodels.stats.power import FTestPower
 from statsmodels.tsa.arima.model import ARIMA
 
 load_dotenv()
@@ -240,6 +241,101 @@ def run_event_study(df):
     print("result here as illustrative rather than a confirmed effect.")
 
 
+# ----------------------------------------------------------------------
+# 6. Power analysis: how much could this study design ever have detected?
+# ----------------------------------------------------------------------
+def run_power_analysis(game_days, n_predictors=4):
+    section("6. Power analysis: how underpowered is n=11?")
+
+    n = len(game_days)
+    df_num = n_predictors
+    df_denom = n - n_predictors - 1
+
+    print(f"n={n}, {n_predictors} predictors, residual df={df_denom}")
+
+    if df_denom < 1:
+        print("Not enough residual degrees of freedom to run a power analysis.")
+        return
+
+    power_calc = FTestPower()
+
+    # What effect size WOULD have been needed for 80% power at alpha=0.05?
+    f2_needed = power_calc.solve_power(
+        effect_size=None, df_num=df_num, df_denom=df_denom, alpha=0.05, power=0.80
+    )
+    r2_needed = f2_needed / (1 + f2_needed)
+
+    print(f"\nMinimum detectable effect size (Cohen's f^2) at 80% power: {f2_needed:.3f}")
+    print(f"Equivalent R^2 needed: {r2_needed:.3f} ({r2_needed:.1%})")
+    print(f"Equivalent correlation: {r2_needed**0.5:.3f}")
+
+    # What power did this design actually have to detect a conventionally
+    # "large" effect (Cohen's f^2 = 0.35)?
+    actual_power = power_calc.power(effect_size=0.35, df_num=df_num, df_denom=df_denom, alpha=0.05)
+    print(f"\nActual power to detect a conventionally 'large' effect (f^2=0.35): {actual_power:.1%}")
+
+    print("\nINTERPRETATION: this design could only reliably detect an almost")
+    print("deterministic relationship (R^2 above roughly 69%). Even a textbook")
+    print("'large' effect would have been missed the large majority of the time.")
+    print("The null OLS result above should be read as 'this study could not")
+    print("confirm a relationship,' NOT 'no relationship exists' -- those are")
+    print("different claims, and only the first is supported by this data.")
+
+
+# ----------------------------------------------------------------------
+# 7. Bivariate correlations with confidence intervals (lighter-weight
+# supplement to the 4-predictor OLS -- fewer parameters means slightly
+# more room to detect something even at n=11, and a confidence interval
+# is more honest than a bare significant/not-significant verdict)
+# ----------------------------------------------------------------------
+def run_bivariate_correlations(game_days):
+    section("7. Bivariate correlations (single predictor at a time)")
+
+    n = len(game_days)
+    print(f"n={n}")
+    print("Simpler than the 4-predictor OLS above: one predictor at a time,")
+    print("using far fewer degrees of freedom. Still a small sample -- expect")
+    print("wide confidence intervals -- but this is a more honest way to look")
+    print("for a relationship than a binary significant/not-significant call.\n")
+
+    predictors = ["points", "plus_minus", "rebounds", "assists"]
+
+    for col in predictors:
+        if col not in game_days.columns:
+            continue
+        paired = game_days[[col, PRIMARY_SENTIMENT_COL]].dropna()
+        if len(paired) < 4:
+            print(f"{col}: too few paired observations, skipping.")
+            continue
+
+        r, p_value = scipy_stats.pearsonr(paired[col], paired[PRIMARY_SENTIMENT_COL])
+
+        print(f"{col} vs. {PRIMARY_SENTIMENT_COL}:")
+
+        if abs(r) >= 0.9999:
+            print(f"  r={r:.3f}, p={p_value:.3f} -- perfect or near-perfect correlation.")
+            print(f"  (Confidence interval undefined at r=+/-1. With n={len(paired)}, this is")
+            print(f"  a sign of an unstable estimate from too little data, not a real")
+            print(f"  finding -- do not report this r as a meaningful effect size.)")
+            continue
+
+        # Fisher z-transformation for the 95% CI on r -- works at any n>=4,
+        # doesn't depend on a specific scipy version's API.
+        n_pairs = len(paired)
+        z = np.arctanh(r)
+        se = 1 / np.sqrt(n_pairs - 3)
+        z_crit = 1.96
+        ci_low, ci_high = np.tanh(z - z_crit * se), np.tanh(z + z_crit * se)
+
+        print(f"  r={r:.3f}, p={p_value:.3f}, 95% CI=[{ci_low:.3f}, {ci_high:.3f}], n={n_pairs}")
+
+    print("\nNOTE: a wide confidence interval that spans (or nearly spans) zero")
+    print("means the data is consistent with anywhere from a meaningfully")
+    print("negative to a meaningfully positive relationship -- i.e. this small")
+    print("sample genuinely cannot distinguish those possibilities from each")
+    print("other. Report the interval, not just the point estimate.")
+
+
 def main():
     df = load_data()
     print(f"Loaded {len(df)} days from daily_sentiment_and_performance")
@@ -250,6 +346,8 @@ def main():
     refit_robust(game_days, het_results)
     run_arma(df)
     run_event_study(df)
+    run_power_analysis(game_days)
+    run_bivariate_correlations(game_days)
 
     section("Done")
     print("Next steps: review coefficient signs/significance, decide whether")
