@@ -2,7 +2,7 @@
 -- 03_aggregation_queries.sql
 --
 -- Aggregates comment-level sentiment into a daily time series and joins
--- it to Curry's game performance. This is the bridge between the raw
+-- it to sga's game performance. This is the bridge between the raw
 -- scored data (comments + sentiment_scores + player_stats) and the
 -- statistical modeling phase (OLS / ARMA / event study).
 --
@@ -11,14 +11,14 @@
 --      available, since VADER never produced a subject classification.
 --      This is the noisier, less trustworthy series (see validation
 --      writeup: VADER conflates incidental/comparative mentions with
---      genuine Curry sentiment).
+--      genuine sga sentiment).
 --   2. LLM, stratified sample (~50/day, ~1,540 total), filtered to
---      subject_label = 'about_curry' only. This is the primary series --
+--      subject_label = 'about_sga' only. This is the primary series --
 --      validated against manual labels at ~78% binary accuracy for the
---      about_curry classification specifically.
+--      about_sga classification specifically.
 --
 -- Every day of May 2015 gets a sentiment average. Only ~21 of those days
--- have a Curry game -- the LEFT JOIN to player_stats intentionally leaves
+-- have a sga game -- the LEFT JOIN to player_stats intentionally leaves
 -- non-game days with NULL performance columns, which is expected, not a
 -- data error.
 -- ============================================================
@@ -44,7 +44,7 @@ ORDER BY comment_date;
 
 
 -- ------------------------------------------------------------
--- View 2: daily LLM sentiment, about_curry only (primary series)
+-- View 2: daily LLM sentiment, about_sga only (primary series)
 -- ------------------------------------------------------------
 CREATE OR REPLACE VIEW daily_sentiment_llm AS
 SELECT
@@ -58,14 +58,14 @@ FROM comments c
 JOIN sentiment_scores s
     ON c.comment_id = s.comment_id AND s.model_version = 'llm_stratified_v2'
 WHERE c.created_utc IS NOT NULL
-    AND s.subject_label = 'about_curry'
+    AND s.subject_label = 'about_sga'
 GROUP BY DATE(c.created_utc)
 ORDER BY comment_date;
 
 
 -- ------------------------------------------------------------
 -- View 3: daily game performance (one row per game date;
--- Curry played at most one game per day in this window)
+-- sga played at most one game per day in this window)
 -- ------------------------------------------------------------
 CREATE OR REPLACE VIEW daily_player_performance AS
 SELECT

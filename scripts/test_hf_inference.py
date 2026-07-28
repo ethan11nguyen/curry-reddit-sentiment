@@ -22,14 +22,14 @@ PROVIDER = "hf-inference"
 TEST_ROWS = 3
 
 SYSTEM_PROMPT = """You analyze Reddit comments from r/nba for sentiment specifically about \
-the basketball player Stephen Curry. Many comments mention Curry only in passing \
+the basketball player sga. Many comments mention sga only in passing \
 while actually expressing sentiment about someone or something else (e.g. \
 comparing him to another player, or using him as a reference point). Your job \
-is to identify whether the comment expresses genuine sentiment TOWARD Curry \
+is to identify whether the comment expresses genuine sentiment TOWARD sga \
 himself, and if so, what that sentiment is.
 
 Respond with ONLY a JSON object, no other text, in this exact format:
-{"subject": "about_curry" | "incidental" | "comparative" | "unclear", \
+{"subject": "about_sga" | "incidental" | "comparative" | "unclear", \
 "sentiment": "positive" | "negative" | "neutral", "score": <float from -1.0 to 1.0>}
 """
 

@@ -1,14 +1,14 @@
 """
 llm_sentiment_scoring.py
 
-Scores Curry-related sentiment using an LLM via Hugging Face's Inference
+Scores sga-related sentiment using an LLM via Hugging Face's Inference
 Providers (the current replacement for the old Serverless Inference API),
 rather than a lexicon-based approach like VADER.
 
 WHY: VADER (see sentiment_scoring.py) has two known weaknesses observed in
 this dataset:
   1. Subject attribution -- it can't tell whether sentiment in a comment is
-     actually about Curry vs. someone else Curry is being compared to.
+     actually about sga vs. someone else sga is being compared to.
   2. Domain slang -- phrases like "shit on 'em" are positive in sports
      trash-talk but score strongly negative in VADER's general-English
      lexicon.
@@ -58,26 +58,26 @@ MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 5
 
 SYSTEM_PROMPT = """You analyze Reddit comments from r/nba for sentiment specifically about \
-the basketball player Stephen Curry. Many comments mention Curry only in passing \
+the basketball player sga. Many comments mention sga only in passing \
 while actually expressing sentiment about someone or something else (e.g. \
 comparing him to another player, or using him as a reference point). Your job \
-is to identify whether the comment expresses genuine sentiment TOWARD Curry \
+is to identify whether the comment expresses genuine sentiment TOWARD sga \
 himself, and if so, what that sentiment is.
 
 Respond with ONLY a JSON object, no other text, in this exact format:
-{"subject": "about_curry" | "incidental" | "comparative" | "unclear", \
+{"subject": "about_sga" | "incidental" | "comparative" | "unclear", \
 "sentiment": "positive" | "negative" | "neutral", "score": <float from -1.0 to 1.0>}
 
 Field meanings:
-- "subject": "about_curry" if the sentiment is genuinely directed at Curry; \
-"incidental" if Curry is mentioned but the sentiment is about someone/something \
+- "subject": "about_sga" if the sentiment is genuinely directed at sga; \
+"incidental" if sga is mentioned but the sentiment is about someone/something \
 else; "comparative" if it's a direct comparison where sentiment is split between \
-Curry and another player; "unclear" if you can't tell or there's no real sentiment.
+sga and another player; "unclear" if you can't tell or there's no real sentiment.
 - "sentiment": the overall sentiment label. If subject is "incidental", this \
-should reflect sentiment toward Curry specifically (often "neutral" if none \
+should reflect sentiment toward sga specifically (often "neutral" if none \
 is actually expressed toward him).
 - "score": -1.0 (very negative) to 1.0 (very positive), 0.0 = neutral. \
-This should reflect sentiment toward Curry specifically, not the whole comment.
+This should reflect sentiment toward sga specifically, not the whole comment.
 
 Respond with the JSON object ONLY. No explanation, no examples, no extra text \
 before or after it. Just the single JSON object.

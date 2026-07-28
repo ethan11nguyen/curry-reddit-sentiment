@@ -1,7 +1,7 @@
 """
 llm_stratified_scoring.py
 
-Scores Curry sentiment using an LLM (via Hugging Face Inference Providers),
+Scores sga sentiment using an LLM (via Hugging Face Inference Providers),
 on a STRATIFIED DAILY SAMPLE of comments rather than the full ~19k -- caps
 comments scored per calendar day so every day of May 2015 is represented
 in the resulting time series, without the cost/time of scoring everything.
@@ -69,31 +69,31 @@ def looks_like_refusal(raw):
     return any(pattern in lowered for pattern in REFUSAL_PATTERNS)
 
 SYSTEM_PROMPT = """You analyze Reddit comments from r/nba for sentiment specifically about \
-the basketball player Stephen Curry.
+the basketball player sga.
 
 CATEGORIES:
-- "about_curry": the comment expresses genuine sentiment directed at Curry himself. \
+- "about_sga": the comment expresses genuine sentiment directed at sga himself. \
 This INCLUDES cases where a comparison to another player is used merely as \
-rhetorical framing, as long as the substantive point is about Curry. \
-Example: "Curry could have gotten the charge, I don't know why he didn't fall \
-over" -> about_curry (negative, mild criticism of a specific Curry play). \
-Example: "CP was off of a hammy though, Steph is 100% healthy" -> about_curry \
-(positive -- states Curry's health status directly).
-- "incidental": Curry's name appears but the sentiment is genuinely about \
-someone/something else, with Curry only a reference point or aside. \
-Example: "James 'Curry' Harden" -> incidental (Curry used only as a nickname \
-for Harden -- no sentiment about Curry himself is being expressed).
+rhetorical framing, as long as the substantive point is about sga. \
+Example: "sga could have gotten the charge, I don't know why he didn't fall \
+over" -> about_sga (negative, mild criticism of a specific sga play). \
+Example: "CP was off of a hammy though, Steph is 100% healthy" -> about_sga \
+(positive -- states sga's health status directly).
+- "incidental": sga's name appears but the sentiment is genuinely about \
+someone/something else, with sga only a reference point or aside. \
+Example: "James 'sga' Harden" -> incidental (sga used only as a nickname \
+for Harden -- no sentiment about sga himself is being expressed).
 - "comparative": the comment's core point is an explicit comparison where \
 sentiment is genuinely SPLIT or the comparison itself (not either player \
-individually) is the subject. Use this only when about_curry doesn't fit \
+individually) is the subject. Use this only when about_sga doesn't fit \
 better -- i.e. when you truly cannot say the comment is substantively about \
-Curry specifically. Example: "Harden's a ball hog, at least Curry knows how \
-to play team ball" -> comparative (frustration is about Harden; Curry is a \
+sga specifically. Example: "Harden's a ball hog, at least sga knows how \
+to play team ball" -> comparative (frustration is about Harden; sga is a \
 positive reference point, not really being evaluated himself).
 - "unclear": no real sentiment expressed, or genuinely ambiguous.
 
-TIE-BREAK RULE: when in doubt between "about_curry" and "comparative", prefer \
-"about_curry" if the comment makes a specific, substantive claim about Curry \
+TIE-BREAK RULE: when in doubt between "about_sga" and "comparative", prefer \
+"about_sga" if the comment makes a specific, substantive claim about sga \
 (his play, health, stats, character) even if phrased via comparison. Only use \
 "comparative" when the sentiment is truly about the comparison/matchup itself, \
 or is clearly directed elsewhere.
@@ -103,7 +103,7 @@ structure, treat it as a single item and pick the ONE category/sentiment \
 that best fits the comment as a whole -- do not analyze each name separately.
 
 If a comment is a factual question with no real sentiment (e.g. "What is \
-Curry's nickname?"), or is a joke/meme with no genuine sentiment, still \
+sga's nickname?"), or is a joke/meme with no genuine sentiment, still \
 respond with the required JSON format -- use "unclear" as the subject with \
 "neutral" sentiment and score 0.0. Do NOT answer the question conversationally, \
 and do NOT generate additional jokes, examples, or continuations -- only \
@@ -113,14 +113,14 @@ INSTRUCTIONS:
 First, in 1-2 sentences, briefly reason about who the sentiment is actually \
 directed at. Then, on a new line, write exactly "FINAL_ANSWER:" followed by a \
 JSON object with this exact format:
-{"subject": "about_curry" | "incidental" | "comparative" | "unclear", \
+{"subject": "about_sga" | "incidental" | "comparative" | "unclear", \
 "sentiment": "positive" | "negative" | "neutral", "score": <float from -1.0 to 1.0>}
 
 For "score": use a precise, continuous value reflecting actual intensity -- \
 avoid defaulting to round numbers like -0.5 or 0.8 unless the sentiment is \
 genuinely that extreme. A mild criticism might be -0.2, a strong one -0.7, etc. \
 If subject is "incidental", sentiment/score should reflect feeling toward \
-Curry specifically (often close to 0 if none is really expressed toward him).
+sga specifically (often close to 0 if none is really expressed toward him).
 """
 
 load_dotenv()
@@ -128,8 +128,8 @@ load_dotenv()
 PG_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
     "port": os.getenv("POSTGRES_PORT", "5432"),
-    "dbname": os.getenv("POSTGRES_DB", "curry_sentiment"),
-    "user": os.getenv("POSTGRES_USER", "curry_admin"),
+    "dbname": os.getenv("POSTGRES_DB", "sga_sentiment"),
+    "user": os.getenv("POSTGRES_USER", "sga_admin"),
     "password": os.getenv("POSTGRES_PASSWORD"),
 }
 

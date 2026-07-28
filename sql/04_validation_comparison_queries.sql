@@ -15,9 +15,9 @@
 --
 -- SCOPING NOTE: VADER scored the full ~19,379-comment corpus, but
 -- the LLM only scored the ~1,540-comment stratified sample (~50/day),
--- filtered to subject_label = 'about_curry'. This query is therefore
+-- filtered to subject_label = 'about_sga'. This query is therefore
 -- restricted to the OVERLAP -- comments that have both an LLM
--- about_curry label AND a VADER label. It is NOT a comparison across
+-- about_sga label AND a VADER label. It is NOT a comparison across
 -- the full corpus, since the LLM never scored most of it. Any chart
 -- built from this should note that scope explicitly (e.g. a Power BI
 -- caption) so it isn't misread as a full-corpus comparison.
@@ -25,7 +25,7 @@
 
 
 -- ------------------------------------------------------------
--- View 1: comment-level confusion matrix data -- LLM (about_curry)
+-- View 1: comment-level confusion matrix data -- LLM (about_sga)
 -- label vs. VADER label, counted over the overlapping comments
 -- ------------------------------------------------------------
 CREATE OR REPLACE VIEW llm_vader_label_confusion AS
@@ -38,7 +38,7 @@ JOIN sentiment_scores v
     ON l.comment_id = v.comment_id
     AND v.model_version = 'vader_sentence_filtered_v1'
 WHERE l.model_version = 'llm_stratified_v2'
-    AND l.subject_label = 'about_curry'
+    AND l.subject_label = 'about_sga'
 GROUP BY l.sentiment_label, v.sentiment_label
 ORDER BY l.sentiment_label, v.sentiment_label;
 

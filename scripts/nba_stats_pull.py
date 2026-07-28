@@ -1,11 +1,11 @@
 """
 nba_stats_pull.py
 
-Pulls Stephen Curry's 2014-15 Regular Season + Playoffs game logs via nba_api
-and loads them into the curry_sentiment Postgres DB's `player_stats` table.
+Pulls sga's 2024/25 Regular Season + Playoffs game logs via nba_api
+and loads them into the sga_sentiment Postgres DB's `player_stats` table.
 
-Scoped deliberately to the 2014-15 season only (not full career) to match
-the Reddit dataset's May 2015 window.
+Scoped deliberately to the 2024-25 season only (not full career) to match
+the Reddit dataset's window.
 
 Setup:
     pip install nba_api --break-system-packages
@@ -23,8 +23,8 @@ from dotenv import load_dotenv
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import playergamelog
 
-PLAYER_FULL_NAME = "Stephen Curry"
-SEASON = "2014-15"
+PLAYER_FULL_NAME = "Shai Gilgeous-Alexander"
+SEASON = "2024-25"
 SEASON_TYPES = ["Regular Season", "Playoffs"]
 
 # nba_api's stats.nba.com endpoints are notoriously flaky/slow — bump timeout
@@ -38,8 +38,8 @@ load_dotenv()
 PG_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
     "port": os.getenv("POSTGRES_PORT", "5432"),
-    "dbname": os.getenv("POSTGRES_DB", "curry_sentiment"),
-    "user": os.getenv("POSTGRES_USER", "curry_admin"),
+    "dbname": os.getenv("POSTGRES_DB", "sga_sentiment"),
+    "user": os.getenv("POSTGRES_USER", "sga_admin"),
     "password": os.getenv("POSTGRES_PASSWORD"),
 }
 

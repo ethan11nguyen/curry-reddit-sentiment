@@ -1,25 +1,25 @@
 """
 export_validation_sample.py
 
-Pulls a random sample of Curry-related comments and exports them to CSV for
+Pulls a random sample of sga-related comments and exports them to CSV for
 manual labeling. The goal: empirically measure how often a comment's overall
-sentiment is genuinely about Curry vs. incidental/comparative (e.g. Curry
+sentiment is genuinely about sga vs. incidental/comparative (e.g. sga
 mentioned only as a comparison point for another player).
 
 This is a measurement step, not part of the automated pipeline. You label
 the sample by hand, then use the results to report a concrete noise-rate
 figure in your findings writeup (e.g. "in a random sample of N comments,
-X% were incidental/comparative mentions rather than direct Curry sentiment"),
+X% were incidental/comparative mentions rather than direct sga sentiment"),
 rather than just noting the limitation vaguely.
 
 Workflow:
     1. Run this script -> produces docs/validation_sample.csv
     2. Open the CSV (Excel, Numbers, Google Sheets, whatever) and fill in
        the `manual_subject_label` column for each row using the values:
-         - "about_curry"     : sentiment is genuinely directed at Curry
-         - "incidental"      : Curry mentioned in passing / as a reference
+         - "about_sga"     : sentiment is genuinely directed at sga
+         - "incidental"      : sga mentioned in passing / as a reference
                                 point, sentiment is about someone/something else
-         - "comparative"     : sentence directly compares Curry to another
+         - "comparative"     : sentence directly compares sga to another
                                 player -- sentiment is ambiguous/split
          - "unclear"         : can't tell / not really about sentiment at all
     3. Once labeled, come back and I'll help you compute agreement rates
@@ -45,8 +45,8 @@ load_dotenv()
 PG_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
     "port": os.getenv("POSTGRES_PORT", "5432"),
-    "dbname": os.getenv("POSTGRES_DB", "curry_sentiment"),
-    "user": os.getenv("POSTGRES_USER", "curry_admin"),
+    "dbname": os.getenv("POSTGRES_DB", "sga_sentiment"),
+    "user": os.getenv("POSTGRES_USER", "sga_admin"),
     "password": os.getenv("POSTGRES_PASSWORD"),
 }
 

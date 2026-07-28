@@ -1,20 +1,20 @@
 """
 sentiment_scoring.py
 
-Scores Curry-related sentiment for each comment in `comments`, writing
+Scores sga-related sentiment for each comment in `comments`, writing
 results into `sentiment_scores`.
 
 IMPORTANT DESIGN CHOICE: sentence-level filtering, not whole-comment scoring.
-Reddit comments frequently mention Curry only in passing while the actual
+Reddit comments frequently mention sga only in passing while the actual
 sentiment is directed at someone else (e.g. "Harden's a ball hog, at least
-Curry knows how to play team ball" -- negative sentiment, but about Harden).
-Scoring the whole comment would misattribute that sentiment to Curry.
+sga knows how to play team ball" -- negative sentiment, but about Harden).
+Scoring the whole comment would misattribute that sentiment to sga.
 
 Instead, each comment body is split into sentences, and ONLY the sentences
-that actually contain a Curry keyword are kept and scored. This doesn't
+that actually contain a sga keyword are kept and scored. This doesn't
 solve every case (a single comparative sentence naming two players is still
 ambiguous), but it substantially reduces noise from multi-sentence comments
-where Curry is just an aside.
+where sga is just an aside.
 
 See export_validation_sample.py for a companion script that pulls a random
 sample for manual labeling, to empirically measure how much of this
@@ -39,7 +39,7 @@ MODEL_VERSION = "vader_sentence_filtered_v1"
 BATCH_SIZE = 5000
 
 # Same keyword list used by the loader, kept in sync deliberately.
-KEYWORDS = ["curry", "steph", "chef curry", "stephen curry"]
+KEYWORDS = ["Shai", "SGA", "sga"]
 
 # Standard VADER compound-score thresholds
 POSITIVE_THRESHOLD = 0.05
@@ -56,8 +56,8 @@ load_dotenv()
 PG_CONFIG = {
     "host": os.getenv("POSTGRES_HOST", "localhost"),
     "port": os.getenv("POSTGRES_PORT", "5432"),
-    "dbname": os.getenv("POSTGRES_DB", "curry_sentiment"),
-    "user": os.getenv("POSTGRES_USER", "curry_admin"),
+    "dbname": os.getenv("POSTGRES_DB", "sga_sentiment"),
+    "user": os.getenv("POSTGRES_USER", "sga_admin"),
     "password": os.getenv("POSTGRES_PASSWORD"),
 }
 
@@ -84,7 +84,7 @@ def contains_keyword(text):
 def extract_relevant_text(body):
     """
     Returns the subset of `body` actually worth scoring: sentences that
-    mention Curry. Falls back to the full body if sentence splitting
+    mention sga. Falls back to the full body if sentence splitting
     somehow produces no matching sentence (shouldn't normally happen,
     since comments were already keyword-filtered at load time, but a
     keyword could span a sentence boundary in edge cases).
@@ -153,7 +153,7 @@ def upsert_batch(pg_conn, rows):
 
 def main():
     print(f"Model version: {MODEL_VERSION}")
-    print("Scoring only Curry-mentioning sentences within each comment (not full comment).\n")
+    print("Scoring only sga-mentioning sentences within each comment (not full comment).\n")
 
     analyzer = SentimentIntensityAnalyzer()
     read_conn = get_pg_conn()

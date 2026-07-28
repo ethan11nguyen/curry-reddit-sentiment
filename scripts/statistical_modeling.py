@@ -1,7 +1,7 @@
 """
 statistical_modeling.py
 
-Statistical analysis of Curry sentiment (May 2015) vs. game performance and
+Statistical analysis of sga sentiment vs. game performance and
 the May 4 MVP announcement. Pulls from the daily_sentiment_and_performance
 view (see sql/03_aggregation_queries.sql) and runs:
 
@@ -12,13 +12,7 @@ view (see sql/03_aggregation_queries.sql) and runs:
    fallback to AR(1) if ARMA(1,1) shows signs of an unreliable fit)
 5. Event study: sentiment before vs. after the May 4 MVP announcement
 
-IMPORTANT CAVEAT, stated upfront rather than buried in a footnote: only
-~11 Curry games fall inside the May 2015 comment window this dataset
-covers. That is a small sample for any game-level regression -- treat the
-OLS coefficients and significance tests here as suggestive, not
-definitive, and say so explicitly in any writeup. This script reports
-exact sample sizes at each step so that limitation stays visible rather
-than getting lost in the summary tables.
+
 
 Setup:
     pip install pandas statsmodels psycopg2-binary python-dotenv scipy sqlalchemy --break-system-packages
@@ -42,14 +36,14 @@ from statsmodels.tsa.arima.model import ARIMA
 
 load_dotenv()
 
-PG_USER = os.getenv("POSTGRES_USER", "curry_admin")
+PG_USER = os.getenv("POSTGRES_USER", "sga_admin")
 PG_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 PG_HOST = os.getenv("POSTGRES_HOST", "localhost")
 PG_PORT = os.getenv("POSTGRES_PORT", "5432")
-PG_DB = os.getenv("POSTGRES_DB", "curry_sentiment")
+PG_DB = os.getenv("POSTGRES_DB", "sga_sentiment")
 
 # Which sentiment series to use as the primary outcome variable.
-# 'llm_avg_score' is the validated, about_curry-filtered series (recommended
+# 'llm_avg_score' is the validated, about_sga-filtered series (recommended
 # primary). 'vader_avg_score' is kept available for a robustness comparison.
 PRIMARY_SENTIMENT_COL = "llm_avg_score"
 
