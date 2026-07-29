@@ -1,14 +1,14 @@
 """
 llm_sentiment_scoring.py
 
-Scores sga-related sentiment using an LLM via Hugging Face's Inference
+Scores SGA-related sentiment using an LLM via Hugging Face's Inference
 Providers (the current replacement for the old Serverless Inference API),
 rather than a lexicon-based approach like VADER.
 
 WHY: VADER (see sentiment_scoring.py) has two known weaknesses observed in
 this dataset:
   1. Subject attribution -- it can't tell whether sentiment in a comment is
-     actually about sga vs. someone else sga is being compared to.
+     actually about SGA vs. someone else SGA is being compared to.
   2. Domain slang -- phrases like "shit on 'em" are positive in sports
      trash-talk but score strongly negative in VADER's general-English
      lexicon.
@@ -17,11 +17,36 @@ An LLM, prompted correctly, can potentially handle both by reading the
 FULL comment (not a sentence-filtered fragment) and reasoning about who the
 sentiment is actually directed at and what the words mean in context.
 
+SCHEMA CHANGE from the earlier 4-way subject classification
+(about_sga / incidental / comparative / unclear): collapsed to 3 categories
+here. The prior project found the LLM had real, consistent difficulty
+distinguishing "incidental" from "comparative" specifically (this is the
+SAME failure mode observed in the original Curry-era pipeline, where a v2
+prompt attempting finer subcategory distinctions measurably REDUCED
+accuracy and had to be reverted). Since nothing downstream actually
+splits those two categories apart for separate analysis -- both get
+excluded identically wherever subject_label != 'about_sga' is filtered --
+asking the model to make that distinction was pure accuracy cost with no
+analytical benefit. Collapsing them into a single "not_about_sga" bucket
+turns this into a cleaner binary-plus-fallback classification problem.
+
+The manual validation labels (docs/validation_sample.csv) can still use
+the original finer categories if you want a documentable "X% of
+not-about-SGA comments were comparative vs. incidental" footnote -- that
+distinction just isn't asked of the LLM anymore, since human judgment
+doesn't share the model's confusion here.
+
+TIE-BREAK RULE: when genuinely ambiguous between about_sga and
+not_about_sga, the prompt instructs the model to favor about_sga. This
+mirrors what measurably improved binary about_[player] accuracy in the
+prior project -- worth keeping as a deliberate, documented choice, not
+an accident.
+
 This script deliberately targets the SAME 150-comment validation sample
-you're manually labeling (docs/validation_sample.csv), NOT the full 19k
-comment set -- run this first, compare all three (manual / VADER / LLM),
-and decide whether it's worth scaling up before spending the time/cost on
-the full corpus.
+you're manually labeling (docs/validation_sample.csv), NOT the full
+stratified_sample set -- run this first, compare all three (manual /
+VADER / LLM), and decide whether it's worth scaling up to the full
+~28,500-comment stratified_sample before spending the time/cost there.
 
 Setup:
     pip install huggingface_hub --break-system-packages
@@ -58,26 +83,55 @@ MAX_RETRIES = 3
 RETRY_DELAY_SECONDS = 5
 
 SYSTEM_PROMPT = """You analyze Reddit comments from r/nba for sentiment specifically about \
-the basketball player sga. Many comments mention sga only in passing \
-while actually expressing sentiment about someone or something else (e.g. \
-comparing him to another player, or using him as a reference point). Your job \
-is to identify whether the comment expresses genuine sentiment TOWARD sga \
-himself, and if so, what that sentiment is.
+the basketball player Shai Gilgeous-Alexander (SGA), point guard for the \
+Oklahoma City Thunder, 2024-25 regular season MVP and Finals MVP. Many \
+comments mention SGA only in passing while actually expressing sentiment \
+about someone or something else -- comparing him to another player \
+(Luka Doncic, Nikola Jokic, Joel Embiid, etc.), using him as a reference \
+point, or discussing the Thunder as a team rather than SGA specifically. \
+Your job is to identify whether the comment expresses genuine sentiment \
+TOWARD SGA himself, and if so, what that sentiment is.
 
 Respond with ONLY a JSON object, no other text, in this exact format:
-{"subject": "about_sga" | "incidental" | "comparative" | "unclear", \
+{"subject": "about_sga" | "not_about_sga" | "unclear", \
 "sentiment": "positive" | "negative" | "neutral", "score": <float from -1.0 to 1.0>}
 
 Field meanings:
-- "subject": "about_sga" if the sentiment is genuinely directed at sga; \
-"incidental" if sga is mentioned but the sentiment is about someone/something \
-else; "comparative" if it's a direct comparison where sentiment is split between \
-sga and another player; "unclear" if you can't tell or there's no real sentiment.
-- "sentiment": the overall sentiment label. If subject is "incidental", this \
-should reflect sentiment toward sga specifically (often "neutral" if none \
-is actually expressed toward him).
+- "subject": "about_sga" if the sentiment is genuinely directed at SGA \
+himself, INCLUDING comments that compare him to another player as long as \
+the substantive point is about SGA (e.g. "SGA gets to the line more than \
+Luka ever did" -- about_sga, since the claim is about SGA's foul-drawing). \
+Use "not_about_sga" if SGA is mentioned but the real sentiment is about \
+someone/something else -- another player, the Thunder as a team, the \
+broadcast, refs, etc. -- with SGA only as an aside or reference point. \
+Use "unclear" only if you genuinely cannot tell, or there is no real \
+sentiment expressed at all (e.g. a pure factual statement with no opinion).
+- TIE-BREAK RULE: if a comment could reasonably be read as either \
+about_sga or not_about_sga, prefer "about_sga" as long as SGA is the \
+grammatical subject of the sentiment-bearing clause, even if another \
+player is named nearby for context or comparison.
+- "sentiment": the overall sentiment label. If subject is "not_about_sga", \
+this should reflect sentiment toward SGA specifically (often "neutral" if \
+none is actually expressed toward him).
 - "score": -1.0 (very negative) to 1.0 (very positive), 0.0 = neutral. \
-This should reflect sentiment toward sga specifically, not the whole comment.
+This should reflect sentiment toward SGA specifically, not the whole comment.
+
+Examples:
+- "SGA is getting to the line 12 times a game, refs are basically giving \
+him free points" -> {"subject": "about_sga", "sentiment": "negative", \
+"score": -0.4} (criticism of SGA's playstyle/foul-drawing)
+- "Shai time. Bucket after bucket in the 4th, nobody can guard him" -> \
+{"subject": "about_sga", "sentiment": "positive", "score": 0.9}
+- "Jokic is a way better passer, SGA just scores in isolation" -> \
+{"subject": "not_about_sga", "sentiment": "neutral", "score": 0.0} \
+(the substantive claim/criticism is about Jokic's superior passing, \
+SGA is only the comparison point)
+- "Thunder defense has been elite all year, SGA included" -> \
+{"subject": "not_about_sga", "sentiment": "neutral", "score": 0.0} \
+(praise is directed at the team, SGA mentioned only incidentally)
+- "SGA > Luka, not even close this year" -> {"subject": "about_sga", \
+"sentiment": "positive", "score": 0.7} (comparison, but the substantive \
+claim is a positive assertion about SGA specifically, per the tie-break rule)
 
 Respond with the JSON object ONLY. No explanation, no examples, no extra text \
 before or after it. Just the single JSON object.

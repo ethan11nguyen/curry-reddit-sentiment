@@ -1,24 +1,34 @@
 """
 sentiment_scoring.py
 
-Scores sga-related sentiment for each comment in `comments`, writing
-results into `sentiment_scores`.
+Scores SGA-related sentiment for each comment in `stratified_sample`,
+writing results into `sentiment_scores`.
+
+SCOPE CHANGE from the original (Curry-era) version of this script: VADER
+now scores only the ~28,500-comment stratified_sample population, NOT the
+full 7.18M-comment corpus. This is a deliberate choice -- it means VADER
+and the LLM (see llm_sentiment_scoring.py) score the exact same set of
+comments, which makes the eventual VADER-vs-LLM-vs-manual-label confusion
+matrix a clean, apples-to-apples comparison rather than needing to reason
+about differently-shaped populations (which was a real limitation in the
+old Curry pipeline's validation).
 
 IMPORTANT DESIGN CHOICE: sentence-level filtering, not whole-comment scoring.
-Reddit comments frequently mention sga only in passing while the actual
+Reddit comments frequently mention SGA only in passing while the actual
 sentiment is directed at someone else (e.g. "Harden's a ball hog, at least
-sga knows how to play team ball" -- negative sentiment, but about Harden).
-Scoring the whole comment would misattribute that sentiment to sga.
+SGA knows how to play team ball" -- negative sentiment, but about Harden).
+Scoring the whole comment would misattribute that sentiment to SGA.
 
 Instead, each comment body is split into sentences, and ONLY the sentences
-that actually contain a sga keyword are kept and scored. This doesn't
+that actually contain an SGA keyword are kept and scored. This doesn't
 solve every case (a single comparative sentence naming two players is still
 ambiguous), but it substantially reduces noise from multi-sentence comments
-where sga is just an aside.
+where SGA is just an aside.
 
 See export_validation_sample.py for a companion script that pulls a random
-sample for manual labeling, to empirically measure how much of this
-misattribution noise remains after sentence-level filtering.
+sample (drawn from this same stratified_sample population) for manual
+labeling, to empirically measure how much of this misattribution noise
+remains after sentence-level filtering.
 
 Setup:
     pip install vaderSentiment --break-system-packages
@@ -39,7 +49,7 @@ MODEL_VERSION = "vader_sentence_filtered_v1"
 BATCH_SIZE = 5000
 
 # Same keyword list used by the loader, kept in sync deliberately.
-KEYWORDS = ["Shai", "SGA", "sga"]
+KEYWORDS = ["Shai", "SGA", "sga", "Shai Gilgeous-Alexander"]
 
 # Standard VADER compound-score thresholds
 POSITIVE_THRESHOLD = 0.05
@@ -84,7 +94,7 @@ def contains_keyword(text):
 def extract_relevant_text(body):
     """
     Returns the subset of `body` actually worth scoring: sentences that
-    mention sga. Falls back to the full body if sentence splitting
+    mention SGA. Falls back to the full body if sentence splitting
     somehow produces no matching sentence (shouldn't normally happen,
     since comments were already keyword-filtered at load time, but a
     keyword could span a sentence boundary in edge cases).
@@ -108,9 +118,18 @@ def fetch_comment_batches(read_conn):
     # Server-side (named) cursor for memory-efficient streaming. This MUST
     # live on its own connection, separate from any connection that commits
     # -- committing invalidates a named cursor mid-iteration.
+    #
+    # SCOPE: restricted to stratified_sample -- see module docstring for why.
     with read_conn.cursor(name="comment_stream") as cur:
         cur.itersize = BATCH_SIZE
-        cur.execute("SELECT comment_id, body FROM comments WHERE body IS NOT NULL")
+        cur.execute(
+            """
+            SELECT c.comment_id, c.body
+            FROM comments c
+            JOIN stratified_sample ss ON ss.comment_id = c.comment_id
+            WHERE c.body IS NOT NULL
+            """
+        )
         while True:
             rows = cur.fetchmany(BATCH_SIZE)
             if not rows:
@@ -153,7 +172,8 @@ def upsert_batch(pg_conn, rows):
 
 def main():
     print(f"Model version: {MODEL_VERSION}")
-    print("Scoring only sga-mentioning sentences within each comment (not full comment).\n")
+    print("Scoring only SGA-mentioning sentences, restricted to stratified_sample "
+          "(~28,500 comments) -- not the full comments corpus.\n")
 
     analyzer = SentimentIntensityAnalyzer()
     read_conn = get_pg_conn()
