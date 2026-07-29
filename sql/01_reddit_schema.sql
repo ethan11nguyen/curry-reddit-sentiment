@@ -40,3 +40,33 @@ CREATE INDEX IF NOT EXISTS idx_comments_link_id ON comments (link_id);
 
 
 
+-- ------------------------------------------------------------
+-- sentiment_scores: holds VADER and LLM sentiment output, one row
+-- per (comment_id, model_version) pair. subject_label is only
+-- populated by the LLM (VADER has no subject-classification ability).
+-- ------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sentiment_scores (
+    comment_id       TEXT NOT NULL REFERENCES comments(comment_id),
+    model_version    TEXT NOT NULL,     -- e.g. 'vader_sentence_filtered_v1', 'llm_stratified_v1'
+    sentiment_score  NUMERIC,
+    sentiment_label  TEXT,              -- 'positive' / 'negative' / 'neutral'
+    subject_label    TEXT,              -- 'about_sga' / 'incidental' / 'comparative' / 'unclear' (LLM only)
+    scored_at        TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (comment_id, model_version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_sentiment_scores_model_version ON sentiment_scores (model_version);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
