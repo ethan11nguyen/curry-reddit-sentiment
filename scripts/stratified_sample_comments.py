@@ -1,8 +1,8 @@
 """
 stratified_sample_comments.py
 
-Selects a stratified sample of comments for LLM sentiment scoring, using
-two tiers:
+Selects a stratified sample of SGA-mentioning comments for LLM sentiment
+scoring, using two tiers:
     - Baseline: BASE_PER_DAY comments randomly sampled from EVERY day in
       the season window (Oct 2024 - June 2025), preserving daily time-
       series coverage even on non-game days.
@@ -11,9 +11,28 @@ two tiers:
       days the correlation analysis in 03_aggregation_queries.sql
       actually depends on.
 
+BUG FIX: earlier versions of this script sampled from ALL r/nba comments,
+not just ones mentioning SGA. filter_subreddit_streaming.py (the pushshift
+torrent filter) only filters by subreddit == "nba" -- it was never a
+player-specific filter, unlike the old Kaggle-era loader which filtered by
+keyword at load time. That keyword filter got dropped when the pipeline
+was rebuilt for pushshift and nobody caught it until manually reviewing
+validation_sample.csv and finding most rows weren't about SGA at all (they
+were general r/nba chatter about other players, refs, etc). Since most
+r/nba comments on any given day aren't about any single player, sampling
+without a keyword filter first wastes most of the sample on off-topic
+content and badly skews accuracy validation (a model that's "right" most
+of the time by just saying "not_about_sga" isn't meaningfully validated).
+
+Fix: both sampling passes below now filter on c.body containing "shai" or
+"sga" (case-insensitive, word-boundary matched so "sga" doesn't accidentally
+match as a substring inside an unrelated word) BEFORE the ROW_NUMBER()
+sampling happens. Same keyword set used in vader_sentiment_scoring.py,
+kept in sync deliberately.
+
 Sampling is done directly in Postgres via ROW_NUMBER() OVER (PARTITION BY
-date ORDER BY random()), which is far more efficient at 7.18M rows than
-pulling everything into Python first.
+date ORDER BY random()), which is far more efficient at scale than pulling
+everything into Python first.
 
 Output: a new table `stratified_sample` containing just the selected
 comment_ids and a boolean flag for whether that row came from the game-day
@@ -38,6 +57,12 @@ DB_NAME = os.getenv("POSTGRES_DB")
 BASE_PER_DAY = 50
 GAME_DAY_BOOST = 150
 
+# Case-insensitive, word-boundary matched. \y is Postgres's POSIX regex
+# word-boundary metacharacter (matches either \m start-of-word or
+# \M end-of-word). Keeps "sga" from matching as a substring inside an
+# unrelated word, while still catching "SGA", "sga", "Sga", etc.
+SGA_KEYWORD_FILTER = r"c.body ~* '\ysga\y|\yshai\y'"
+
 CREATE_TABLE_SQL = """
     DROP TABLE IF EXISTS stratified_sample;
     CREATE TABLE stratified_sample (
@@ -48,8 +73,9 @@ CREATE_TABLE_SQL = """
     );
 """
 
-# Baseline: BASE_PER_DAY random comments from every day in the season window
-BASELINE_SAMPLE_SQL = """
+# Baseline: BASE_PER_DAY random comments from every day in the season window,
+# restricted to comments that actually mention SGA.
+BASELINE_SAMPLE_SQL = f"""
     INSERT INTO stratified_sample (comment_id, comment_date, is_game_day, sample_tier)
     SELECT comment_id, comment_date, is_game_day, 'baseline'
     FROM (
@@ -64,13 +90,14 @@ BASELINE_SAMPLE_SQL = """
         FROM comments c
         LEFT JOIN player_stats p ON p.game_date = DATE(c.created_at)
         WHERE DATE(c.created_at) BETWEEN '2024-10-01' AND '2025-06-30'
+            AND {SGA_KEYWORD_FILTER}
     ) ranked
     WHERE rn <= %s
 """
 
-# Game-day boost: additional comments on game days only, excluding
-# comment_ids already picked in the baseline pass above
-GAME_DAY_BOOST_SQL = """
+# Game-day boost: additional SGA-mentioning comments on game days only,
+# excluding comment_ids already picked in the baseline pass above.
+GAME_DAY_BOOST_SQL = f"""
     INSERT INTO stratified_sample (comment_id, comment_date, is_game_day, sample_tier)
     SELECT comment_id, comment_date, is_game_day, 'game_day_boost'
     FROM (
@@ -85,6 +112,7 @@ GAME_DAY_BOOST_SQL = """
         FROM comments c
         JOIN player_stats p ON p.game_date = DATE(c.created_at)
         WHERE c.comment_id NOT IN (SELECT comment_id FROM stratified_sample)
+            AND {SGA_KEYWORD_FILTER}
     ) ranked
     WHERE rn <= %s
 """
@@ -111,11 +139,11 @@ def run():
     cur.execute(CREATE_TABLE_SQL)
     conn.commit()
 
-    print(f"Selecting baseline sample ({BASE_PER_DAY}/day, all 273 days)...")
+    print(f"Selecting baseline sample ({BASE_PER_DAY}/day, all 273 days, SGA-mentioning only)...")
     cur.execute(BASELINE_SAMPLE_SQL, (BASE_PER_DAY,))
     conn.commit()
 
-    print(f"Selecting game-day boost (+{GAME_DAY_BOOST}/game day)...")
+    print(f"Selecting game-day boost (+{GAME_DAY_BOOST}/game day, SGA-mentioning only)...")
     cur.execute(GAME_DAY_BOOST_SQL, (GAME_DAY_BOOST,))
     conn.commit()
 

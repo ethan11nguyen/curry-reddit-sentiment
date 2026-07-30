@@ -73,7 +73,19 @@ OUTPUT_PATH = "docs/validation_sample_with_llm.csv"
 # Configurable -- swap this if the model is slow, unavailable, or you want
 # to compare a second model. "auto" lets HF pick the fastest available
 # backend provider for this model.
-MODEL = "meta-llama/Llama-3.1-8B-Instruct"
+#
+# MODEL CHOICE: upgraded from Llama-3.1-8B-Instruct to Llama-3.3-70B-Instruct
+# after the 8B model plateaued around 66.7% subject-classification accuracy
+# despite multiple rounds of prompt refinement (explicit tie-break rules,
+# short-comment examples, pronoun-ambiguity cautions). The residual errors
+# looked like a genuine reasoning-capability limit -- e.g. the model kept
+# missing direct, unambiguous statements ("SGA and Jokic decided they don't
+# want the MVP no more") that a human calls instantly, and over-attributing
+# subject to SGA whenever he appeared in a list of 3+ named players. A
+# larger model should handle this kind of "who is the real grammatical/
+# semantic subject" reasoning more reliably. Cost remains low at this
+# comment volume even at 70B scale.
+MODEL = "meta-llama/Llama-3.3-70B-Instruct"
 PROVIDER = "auto"
 
 # Be gentle on rate limits -- free-tier Inference Providers access can be
@@ -116,6 +128,53 @@ none is actually expressed toward him).
 - "score": -1.0 (very negative) to 1.0 (very positive), 0.0 = neutral. \
 This should reflect sentiment toward SGA specifically, not the whole comment.
 
+IMPORTANT -- DEFAULT TOWARD about_sga ON SHORT/TERSE COMMENTS: Reddit \
+comments are often a single short clause or fragment, not a full \
+elaborated argument. Do NOT require substantial elaboration before \
+calling something about_sga. A short, direct evaluative statement that \
+names SGA is about_sga even if it's just a few words -- e.g. "Sga is a \
+scrub", "Shai is playing 4 quarters.", "I mean Shai is young lol", and \
+even a bare one-word reply like "SGA" (e.g. answering "who's your MVP \
+pick") are all about_sga. Terseness is not evidence of \
+ambiguity -- judge the CONTENT of what's said about SGA, however brief, \
+not the length of the comment.
+
+MULTI-PLAYER MENTIONS -- test whether the claim is ABOUT the named \
+individuals or just uses them as EXAMPLES of a bigger category: \
+if SGA is named alongside other players as an equal, direct subject of \
+one specific claim (about their play, stats, decisions, or performance), \
+it's about_sga -- this holds regardless of how many players are named \
+together (2, 3, 5+). E.g. "SGA and Jokic decided they don't want the \
+MVP no more" (2 players, both are the direct subject) and "sga jdub chet \
+ihart caruso going to put us into fifth apron" (5 players, all equal \
+subjects of one payroll claim) are BOTH about_sga. But if SGA is named \
+only as one illustrative example within a list supporting some broader \
+point that isn't really about any of the individuals -- e.g. "I'd say \
+the % of superstars have gotten more diverse. Like Jokic, Wemby, \
+Giannis, and yes SGA (he's not American)" -- that's not_about_sga, since \
+the claim is about a league-wide trend, not about SGA's own play or \
+performance specifically.
+
+PRONOUN RESOLUTION -- only default to "unclear" if the pronoun's \
+antecedent is COMPLETELY ABSENT from the comment. If SGA/Shai is named \
+ANYWHERE in the same comment -- before OR after the pronoun -- resolve \
+the pronoun to him and classify normally; do not treat a pronoun as \
+inherently ambiguous just because it appears before the name. E.g. \
+"Shai.. he's been robbed before" is about_sga (name appears immediately \
+before "he", trivially resolved). Only use "unclear" for pronouns like \
+"He's been a pleasant surprise. His lateral quickness still leaves much \
+to be desired" where NO name appears anywhere in the comment at all -- \
+there is genuinely no way to know who "he" refers to.
+
+MISSING EXTERNAL CONTEXT -- separately from pronouns, some comments \
+reference something you cannot see (a stat, a game, a prior comment) \
+using vague deictic words like "this" or "that" with no definition \
+anywhere in the comment itself. E.g. "Idk man giannis, SGA, and jokic \
+bad games are never this bad" -- "this bad" refers to some specific \
+performance never described in the comment, so the actual claim being \
+made is unknowable. Use "unclear" for these cases too, distinct from \
+(but similarly to) unresolved pronouns.
+
 Examples:
 - "SGA is getting to the line 12 times a game, refs are basically giving \
 him free points" -> {"subject": "about_sga", "sentiment": "negative", \
@@ -132,6 +191,42 @@ SGA is only the comparison point)
 - "SGA > Luka, not even close this year" -> {"subject": "about_sga", \
 "sentiment": "positive", "score": 0.7} (comparison, but the substantive \
 claim is a positive assertion about SGA specifically, per the tie-break rule)
+- "Sga is a scrub" -> {"subject": "about_sga", "sentiment": "negative", \
+"score": -0.8} (short and blunt, but a direct evaluative claim about SGA \
+-- don't require more elaboration than this)
+- "SGA" -> {"subject": "about_sga", "sentiment": "neutral", "score": 0.0} \
+(a bare name in reply to some other question, e.g. an MVP pick -- still \
+about_sga even with zero elaboration; score neutral since no sentiment \
+words are present)
+- "He's been a pleasant surprise. His lateral quickness still leaves \
+much to be desired" -> {"subject": "unclear", "sentiment": "neutral", \
+"score": 0.0} (no name anywhere in this comment -- "He" is never tied \
+to SGA, could be someone else discussed earlier in the thread that you \
+can't see)
+- "Shai.. he's been robbed before" -> {"subject": "about_sga", \
+"sentiment": "positive", "score": 0.3} (name appears immediately before \
+the pronoun -- trivially resolved, NOT an ambiguous case)
+- "No way you just made this in response to the SGA highlight post \
+lmaooo" -> {"subject": "not_about_sga", "sentiment": "neutral", \
+"score": 0.0} (commentary about the post/other user's reaction, not \
+sentiment toward SGA's play itself)
+- "sga jdub chet ihart caruso going to put us into fifth apron" -> \
+{"subject": "about_sga", "sentiment": "neutral", "score": 0.0} (5 \
+players named as equal co-subjects of one payroll claim -- SGA is \
+directly implicated, not just an example in a list)
+- "I'd say the % of superstars have gotten more diverse. Like Jokic, \
+Wemby, Giannis, and yes SGA (he's not American)" -> {"subject": \
+"not_about_sga", "sentiment": "neutral", "score": 0.0} (SGA is one \
+illustrative example supporting a claim about league-wide demographic \
+trends, not a claim about his own play)
+- "Idk man giannis, SGA, and jokic bad games are never this bad" -> \
+{"subject": "unclear", "sentiment": "neutral", "score": 0.0} ("this bad" \
+references some specific performance never described in the comment -- \
+the actual claim is unknowable without context you don't have)
+- "I need to see us win by more than 51 just so we can outmeat Shai yet \
+again" -> {"subject": "not_about_sga", "sentiment": "neutral", \
+"score": 0.0} (Shai is the numeric benchmark being chased, "us" -- not \
+Shai -- is the actual subject of the claim)
 
 Respond with the JSON object ONLY. No explanation, no examples, no extra text \
 before or after it. Just the single JSON object.
