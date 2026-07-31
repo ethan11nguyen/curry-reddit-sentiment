@@ -407,18 +407,19 @@ def run_power_analysis(game_days, n_predictors=4):
         print(f"1's actual R^2 against the {r2_needed:.1%} threshold above.")
 
 
-def run_bivariate_correlations(game_days):
-    section("7. Bivariate correlations (single predictor at a time)")
+def run_bivariate_correlations(data, sentiment_col=None, label="same-day (section 7)"):
+    sentiment_col = sentiment_col or PRIMARY_SENTIMENT_COL
+    section(f"Bivariate correlations (single predictor at a time) -- {label}")
 
-    print(f"n={len(game_days)}\n")
+    print(f"n={len(data)}\n")
     for col in ["points", "plus_minus", "rebounds", "assists"]:
-        if col not in game_days.columns:
+        if col not in data.columns:
             continue
-        paired = game_days[[col, PRIMARY_SENTIMENT_COL]].dropna()
+        paired = data[[col, sentiment_col]].dropna()
         if len(paired) < 4:
             print(f"{col}: too few observations, skipping.")
             continue
-        r, p_value = scipy_stats.pearsonr(paired[col], paired[PRIMARY_SENTIMENT_COL])
+        r, p_value = scipy_stats.pearsonr(paired[col], paired[sentiment_col])
         if abs(r) >= 0.9999:
             print(f"{col}: r={r:.3f} -- near-perfect, likely unstable.")
             continue
@@ -426,18 +427,20 @@ def run_bivariate_correlations(game_days):
         z = np.arctanh(r)
         se = 1 / np.sqrt(n_pairs - 3)
         ci_low, ci_high = np.tanh(z - 1.96 * se), np.tanh(z + 1.96 * se)
-        print(f"{col} vs. {PRIMARY_SENTIMENT_COL}: r={r:.3f}, p={p_value:.3f}, "
+        print(f"{col} vs. {sentiment_col}: r={r:.3f}, p={p_value:.3f}, "
               f"95% CI=[{ci_low:.3f}, {ci_high:.3f}], n={n_pairs}")
 
 
-def run_margin_interaction(game_days):
-    section("8. Win/loss margin interaction")
+def run_margin_interaction(data, sentiment_col=None, label="same-day (section 8)"):
+    sentiment_col = sentiment_col or PRIMARY_SENTIMENT_COL
+    section(f"Win/loss margin interaction -- {label}")
 
-    print(f"n={len(game_days)}")
-    print("Does the sentiment effect of plus_minus differ for wins vs. losses?\n")
+    print(f"n={len(data)}")
+    print(f"Does the sentiment effect of plus_minus differ for wins vs. losses? "
+          f"(outcome: {sentiment_col})\n")
 
-    formula = f"{PRIMARY_SENTIMENT_COL} ~ C(win_loss) * plus_minus + C(home_away)"
-    model = smf.ols(formula=formula, data=game_days).fit()
+    formula = f"{sentiment_col} ~ C(win_loss) * plus_minus + C(home_away)"
+    model = smf.ols(formula=formula, data=data).fit()
     print(model.summary())
 
     for term in [n for n in model.pvalues.index if ":" in n]:
@@ -446,9 +449,9 @@ def run_margin_interaction(game_days):
         print(f"\nInteraction {term}: coef={coef:.4f}, p={p:.4f} -- {sig}")
 
     print(f"\n--- Blowout (|margin|>={BLOWOUT_THRESHOLD}) vs close ---")
-    gd = game_days.copy()
+    gd = data.copy()
     gd["margin_type"] = np.where(gd["plus_minus"].abs() >= BLOWOUT_THRESHOLD, "blowout", "close")
-    print(gd.groupby(["win_loss", "margin_type"])[PRIMARY_SENTIMENT_COL].agg(["mean", "std", "count"]))
+    print(gd.groupby(["win_loss", "margin_type"])[sentiment_col].agg(["mean", "std", "count"]))
 
 
 def main():
@@ -472,9 +475,19 @@ def main():
     run_event_study(df)
     run_event_study_playoff_controlled(df)
     run_power_analysis(game_days)
-    run_bivariate_correlations(game_days)
+
+    section("7/8. Same-day vs. next-day: bivariate correlations and margin interaction")
+    print("Given the 1b discovery that next-day sentiment carries far more signal")
+    print("than same-day, both tests below are run on BOTH timings for comparison.")
+
+    run_bivariate_correlations(game_days, PRIMARY_SENTIMENT_COL, "same-day (7a)")
+    if data_next is not None:
+        run_bivariate_correlations(data_next, "next_day_sentiment", "next-day (7b)")
+
     if game_days is not None and len(game_days) >= 5:
-        run_margin_interaction(game_days)
+        run_margin_interaction(game_days, PRIMARY_SENTIMENT_COL, "same-day (8a)")
+    if data_next is not None and len(data_next) >= 5:
+        run_margin_interaction(data_next, "next_day_sentiment", "next-day (8b)")
 
     section("Done")
 

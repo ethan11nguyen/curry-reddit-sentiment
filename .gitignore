@@ -25,3 +25,4 @@ data/raw/
 .Rhistory
 # Personal reference docs, not part of the project itself
 resume_skills_reference.md
+findings.html
