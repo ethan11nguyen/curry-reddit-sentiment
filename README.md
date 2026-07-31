@@ -1,93 +1,171 @@
-# Curry Reddit Sentiment Analysis
-Analyzes Reddit sentiment toward Stephen Curry during May 2015, covering his 2014-15 NBA MVP and championchip playoff run, and correlates that fan sentiment against his real game box scores. Built as a portfolio project to showcase skills in SQL, Python, Power BI, and statistical modeling.
+# SGA Reddit Sentiment Analysis
 
-## Approach & Pivots
-**Original Plan:** analyze fan sentiment on Shai Gilgeous Alexander (SGA), live-scraped from r/nba from Reddit's API (PRAW), and finding the correlation of his fans sentiment versus his game statistics. However, Reddit's API requires an access request with no guaranteed approval time.
+Analyzes Reddit sentiment toward Shai Gilgeous-Alexander (SGA) across the
+Oklahoma City Thunder's full 2024-25 season -- the season in which SGA
+won regular season MVP, Finals MVP, and the championship -- and tests
+whether that fan sentiment correlates with his real game performance.
 
-**Attempted workarounds:**
-- Scraping Reddit's public .json for the same data on SGA, however was blocked by Reddit's anti-bot layer
-- X/Twitter's API was considered, but found that recent search only covers the last 7 days on the affordable tier, and full-archive historical search requires a considerable amount of money.
+Built as a portfolio project to showcase skills in data engineering,
+SQL, Python, LLM-based text classification, and statistical modeling.
 
-**The Pivot:** Switched to a static historical dataset from Kaggle on all Reddit comments in May 2015, and moved from SGA to Stephen Curry, since May 2015 happens to contain Curry's MVP award announcement (May 4) and his championship run with the Warriors.
+See [`docs/findings.md`](docs/findings.md) for the full results writeup.
+
+## Data Pipeline
+
+Reddit comment data comes from pushshift's r/nba archives (via Academic
+Torrents), covering October 2024 through June 2025 -- 7.18 million
+comments total. These are streamed and filtered for r/nba directly from
+the compressed monthly archives without full disk decompression
+(`scripts/filter_subreddit_streaming.py`), then loaded into Postgres.
+
+A stratified sample of ~23,000 SGA-mentioning comments was drawn for
+sentiment scoring: a daily baseline for time-series coverage, plus
+additional sampling on actual game days, since those are the days the
+performance-correlation analysis depends on. See
+`scripts/stratified_sample_comments.py` for the full sampling design.
+
+Game performance data comes from `nba_api`, covering SGA's full 2024-25
+regular season and playoff game logs.
 
 ## Sentiment Scoring: VADER vs. LLM
-Sentiment was initially scored using the VADER lexicon-based natural language processor. However after a manual review of 150 comments for validation, the VADER NLP was found to have two problems:
 
-1. Subject misattribution: Many comments mention Curry in passing while the sentiment is about someone else, however VADER scores the entire comment as sentiment against/for Curry.
-2. Slang: Sports trash-talk scores as strongly negative under the VADER lexicon. For example one comment saying "Shit on em curry" was given a negative sentiment score of -0.5574, but in reality, the sentiment was positive. 
+Sentiment was scored two ways, run against the *same* ~23,000-comment
+sample for a direct, apples-to-apples comparison:
 
-To address this, a pivot to using an LLM (Llama 3.1 8B via Hugging Face) was taken and given a prompt to return both the sentiment and who its actually about (`about_curry` / `incidental` / `comparative` / `unclear`). This was validated against the same 150 comment sample, and found that the LLM's `about_curry` reached ~78% accuracy against manual labels. However `incidental` and `comparative` was still unreliable after prompt tuning. The final sentiment scoring model used in the statistical analysis settled on the LLM after prompt adjusting, `model_version = llm_statified_v2`, filtered to comments only `about_curry`. VADER's score (model_version = `vader_sentence_filtered_v1`) is kept as a secondary comparison, given its documented limitations above. 
+1. **VADER** (lexicon-based): fast and free, but has no ability to tell
+   *who* a comment's sentiment is actually about -- many comments
+   mention SGA only in passing while the real sentiment is directed at
+   another player, a comparison, or the team as a whole.
+2. **LLM** (Llama 3.3 70B via Hugging Face Inference Providers): given
+   the full comment text, classifies both subject (`about_sga` /
+   `not_about_sga` / `unclear`) and sentiment.
+
+The LLM prompt was validated against a 150-comment hand-labeled sample
+and refined through several rounds of targeted fixes based on specific
+observed errors (see `scripts/llm_stratified_scoring.py` for the full
+prompt and its documented rationale). A smaller 8B model plateaued
+around 67% accuracy despite prompt refinement -- diagnosed as a genuine
+model capability limit rather than a fixable prompt issue. Upgrading to
+70B with the same refined prompt reached **94.7% accuracy** against the
+hand-labeled set, which is the model/prompt combination used for the
+full production run.
+
+## Key Finding
+
+Same-day game performance does **not** predict same-day sentiment -- but
+strongly predicts **next-day** sentiment. NBA games tip off in the
+evening, so most genuine fan reaction lands on the following calendar
+day rather than the game's own day; correcting for this timing turned a
+null result (R-squared=0.04) into a strong, statistically significant
+one (R-squared=0.26, p<0.0001). A second naive finding -- a sentiment
+shift around the MVP announcement -- turned out to be confounded with
+the concurrent start of the playoffs, and lost significance once
+controlled for.
+
+Full methodology, all statistical tests, and complete results are in
+[`docs/findings.md`](docs/findings.md).
 
 ## Known Limitations
-- **Statistical power:** The dataset covers only 11 games in May 2015, which limits the statistical power of the OLS and event study models. A power analysis found that with only n=11 game days and 4 predictors (points, plus/minus, win/loss, home/away), giving a residual df=6, the minimum $R^2$ to detect effect would be roughly 69%. This sample size restriction should be read as "this study could not confirm a relationship" rather than "no relationship exists". 
-- **LLM subjust-attribution reliability:** The LLM sentiment pipeline classifies each comment's subject as either `about_curry`, `incidental`, `comparative`, or `unclear`. A random sample of 150 comments were manually labeled, and the `about_curry` label reached 78.3% binary accuracy. However, `incidental` and `comparative` were not reliable even after prompt tuning, and were excluded from the statistical analysis. Of the 1540 stratified sample comments scored by the LLM, only 640 (~41%) were classified `about_curry`, and the remaining were excluded.
-- **Sample coverage mismatch between VADER and the LLM:** The two sentiment scoring approaches were not run on the same population of comments. While the VADER nlp model scored the entire population of ~19k comments, the LLM sentiment analysis was performed on a stratified sample of ~50 comments a day (~1540 total) to accommodate API rate limits and processing times. As a result, VADER and LLM scores are not directly comparable measurements of the same comments.
-- **Data source constraints:** The Reddit comment data comes from a static Kaggle dataset covering all Reddit comments for May 2015, and then filtered to r/nba and to comments regarding Stephen Curry. 
-- **LLM mistakes:** The LLM labeled n=2 comments an off-schema sentiment labeled as "concerned" outside the expected positive/neutral/negative set. These were left in the data rather than dropped. The LLM pipeline also encountered 10 failures (of 1550 comments) regarding content-moderation refusals and JSON parsing failures during scoring, which were handled via a three-attempt retry loop (1s delay for JSON-format misses, 5s for real API errors), with content-moderation refusals detected and skipped immediately rather than retried. Comments still failing after that were logged and excluded, not inserted as null.
+
+- **Sampling scope**: sentiment scoring (both VADER and LLM) covers the
+  ~23,000-comment stratified sample, not the full 7.18M-comment corpus --
+  a deliberate tradeoff to keep both methods scoped identically for a
+  clean comparison, at the cost of full-corpus coverage.
+- **LLM subject-classification accuracy**: 94.7% on the validation
+  sample, with remaining errors roughly evenly split between over- and
+  under-attribution (not systematically biased one direction) --
+  consistent with residual, largely irreducible ambiguity in genuinely
+  hard cases rather than a fixable pattern.
+- **Statistical power**: an earlier single-month pilot phase of this
+  project (n=11 games) had so little power that even a large effect
+  would likely have gone undetected -- any null result there was
+  uninterpretable. The full-season analysis (n=99 games) has 87-99.9%
+  power to detect medium/large effects, making its null and positive
+  results both far more trustworthy.
+- **Correlational, not causal**: all relationships reported are
+  correlational. The next-day timing result is a robust correlation; it
+  doesn't independently establish that performance *causes* the
+  sentiment shift, though it's the substantively plausible direction.
+- **Single-season, single-player**: findings are specific to SGA's
+  2024-25 season and shouldn't be assumed to generalize elsewhere
+  without independent testing.
 
 ## Tech Stack
-- Database: PostgreSQL 16, in Docker
-- Data sources: Kaggle May 2015 Reddit Comments dataset, `nba_api`
-- Sentiment scoring: VADER, Llama 3.1 8B (Hugging Face Inference Providers)
-- Statistical Modeling: Python, statsmodels (OLS, robust SEs, ARMA), scipy
-- Tools: Git, Docker, DBeaver
+- **Database**: PostgreSQL 16, in Docker
+- **Data sources**: pushshift Reddit archives (via Academic Torrents),
+  `nba_api`
+- **Sentiment scoring**: VADER, Llama 3.3 70B (Hugging Face Inference
+  Providers)
+- **Statistical modeling**: Python, statsmodels (OLS, robust SEs, ARMA,
+  event study, power analysis via noncentral F), scipy
+- **Tools**: Git, Docker, DBeaver
 
 ## Repo Structure
 
-├── docker-compose.yml          # Postgres container definition
-├── requirements.txt            # Python dependencies
-├── .env.example                # Template for required environment variables
+```
+├── docker-compose.yml                        # Postgres container definition
+├── requirements.txt                          # Python dependencies
+├── .env.example                              # Template for required environment variables
 │
 ├── sql/
-│   ├── 01_reddit_schema.sql               # Reddit comments/posts table schema
-│   ├── 02_player_stats_schema.sql         # Curry game log table schema
-│   ├── 03_aggregation_queries.sql         # Daily sentiment + game performance views (modeling input)
+│   ├── 01_reddit_schema.sql                  # Comments table schema (typed columns + JSONB)
+│   ├── 02_player_stats_schema.sql            # SGA game log table schema
+│   ├── 03_aggregation_queries.sql            # Daily sentiment + game performance views (modeling input)
 │   └── 04_validation_comparison_queries.sql  # LLM vs. VADER confusion matrix (comment-level)
 │
 ├── scripts/
-│   ├── load_kaggle_reddit_dataset.py      # Loads the Kaggle May 2015 Reddit comments dataset
-│   ├── nba_stats_pull.py                  # Pulls Curry's 2014-15 game logs via nba_api
-│   ├── sentiment_scoring.py               # VADER scoring
-│   ├── llm_sentiment_scoring.py           # v1 LLM prompt, run against the 150-comment validation sample
-│   ├── llm_sentiment_scoring_v2.py        # reverted/overcorrected prompt version
-│   ├── llm_stratified_scoring.py          # final stratified LLM scoring run (50/day)
-│   ├── export_validation_sample.py        # Exports the 150-comment manual validation sample
-│   ├── reorder_validation_csv_columns.py  # Reorders LLM columns before VADER in validation CSVs
-│   ├── statistical_modeling.py            # OLS, robust SEs, ARMA, event study, power analysis
-│   └── test_hf_inference.py               # Hugging Face Inference Providers connectivity test
+│   ├── filter_subreddit_streaming.py         # Streams pushshift archives, filters to r/nba
+│   ├── load_pushshift_comments.py            # Loads filtered comments into Postgres
+│   ├── nba_stats_pull.py                     # Pulls SGA's 2024-25 game logs via nba_api
+│   ├── stratified_sample_comments.py         # Builds the ~23K-comment stratified sample
+│   ├── vader_sentiment_scoring.py            # VADER scoring, stratified sample
+│   ├── llm_sentiment_scoring.py              # LLM prompt validation, run against the 150-comment sample
+│   ├── llm_stratified_scoring.py             # Full-scale LLM scoring run, stratified sample
+│   ├── export_validation_sample.py           # Exports the 150-comment manual validation sample
+│   ├── check_llm_accuracy.py                 # Compares LLM output against manual labels
+│   ├── test_hf_inference.py                  # Hugging Face Inference Providers connectivity test
+│   └── statistical_modeling.py               # OLS, robust SEs, ARMA, event study, power analysis
 │
 ├── docs/
-│   ├── validation_sample.csv              # Manually labeled 150-comment sample
-│   ├── validation_sample_with_llm.csv     # + LLM labels (v1 prompt)
-│   └── validation_sample_with_llm_v2.csv  # + LLM labels (v2 prompt, reverted)
-│
-├── powerbi/
-│   └── curry_sentiment_powerbi.pbix       # Dashboard: sentiment timeline, win/loss, LLM/VADER validation
+│   ├── findings.md                           # Full results writeup
+│   ├── validation_sample.csv                 # Manually labeled 150-comment sample
+│   └── validation_sample_with_llm.csv        # + LLM labels
 │
 └── archive/
-    └── sga_json_scraper.py                # Abandoned SGA live-scraping approach (see Approach & Pivots)
+    └── may2015_kaggle_pipeline/              # Earlier project phase -- see docs/findings.md for context
+```
 
 ## Setup Instructions
 
-**Prerequisites:** Docker, Python 3.x (Anaconda environment recommended), a Hugging Face account with an Inference Providers API token.
+**Prerequisites:** Docker, Python 3.x (Anaconda environment recommended),
+a Hugging Face account with an Inference Providers API token and billing
+configured (production-scale LLM scoring costs roughly $50-60 depending
+on provider routing -- see cost notes in `llm_stratified_scoring.py`).
 
 1. Clone the repo and `cd` into it.
-2. Copy `.env.example` to `.env` and fill in your Postgres credentials and `HUGGINGFACE_API_TOKEN`.
+2. Copy `.env.example` to `.env` and fill in your Postgres credentials
+   and `HF_TOKEN`.
 3. Install Python dependencies: `pip install -r requirements.txt`
-4. Start Postgres: `docker compose up -d`
-5. Run the schema files against the database (via `psql -f` or DBeaver, in order):
-   - `sql/01_reddit_schema.sql`
-   - `sql/02_player_stats_schema.sql`
+4. Start Postgres: `docker compose up -d` (schema auto-initializes from
+   `sql/` on first run)
+5. Acquire the raw data:
+   - Download pushshift r/nba monthly comment archives (Academic
+     Torrents) for your target date range
+   - Filter each month: `python scripts/filter_subreddit_streaming.py <input.zst> <output.jsonl>`
+   - Combine the monthly outputs into one file (e.g.
+     `data/raw/nba_full_season.jsonl`)
 6. Load the data:
-   - `python scripts/load_kaggle_reddit_dataset.py`
+   - `python scripts/load_pushshift_comments.py data/raw/nba_full_season.jsonl`
    - `python scripts/nba_stats_pull.py`
-7. Run sentiment scoring:
-   - `python scripts/sentiment_scoring.py` (VADER, full corpus)
-   - `python scripts/llm_stratified_scoring.py` (LLM, production 50/day stratified sample)
-   - *(Optional, for reproducing the validation writeup)*: `python scripts/llm_sentiment_scoring.py` and `llm_sentiment_scoring_v2.py` against the 150-comment sample in `docs/validation_sample.csv`
+7. Build the sampling and scoring pipeline:
+   - `python scripts/stratified_sample_comments.py`
+   - `python scripts/vader_sentiment_scoring.py`
+   - `python scripts/llm_stratified_scoring.py` (production LLM run -- see cost note above)
+   - *(Optional, for reproducing the validation writeup)*:
+     `python scripts/export_validation_sample.py`, hand-label
+     `manual_subject_label`, then `python scripts/llm_sentiment_scoring.py`
+     and `python scripts/check_llm_accuracy.py`
 8. Run the aggregation views:
-   - `sql/03_aggregation_queries.sql`
-   - `sql/04_validation_comparison_queries.sql`
+   - `psql -f sql/03_aggregation_queries.sql`
+   - `psql -f sql/04_validation_comparison_queries.sql`
 9. Run the statistical modeling script: `python scripts/statistical_modeling.py`
-10. (Optional) Open `powerbi/curry_sentiment_powerbi.pbix` in Power BI Desktop — point the data source at your local Postgres instance.
-
