@@ -42,19 +42,38 @@
 -- ------------------------------------------------------------
 -- View 1: unrestricted VADER vs LLM sentiment_label confusion matrix,
 -- across the full stratified_sample (~23,093 comments)
+--
+-- DISPLAY LABELS: renamed here (rather than left as raw lowercase
+-- values) so the Power BI matrix visual shows readable row/column
+-- headers directly, without needing per-visual renaming in Power BI
+-- itself. The LLM occasionally (8 of 23,093 rows) returned an
+-- off-schema "mixed" sentiment_label instead of the three defined in
+-- the prompt (positive/negative/neutral) -- folded into "Neutral" here
+-- for display purposes, since it's a rare, undefined value that would
+-- otherwise show as an unexplained 4th category in the matrix. This is
+-- a presentation-layer choice only; the raw "mixed" value is untouched
+-- in sentiment_scores itself for anyone querying the raw table directly.
 -- ------------------------------------------------------------
 CREATE OR REPLACE VIEW llm_vader_confusion_unrestricted AS
 SELECT
-    l.sentiment_label AS llm_label,
-    v.sentiment_label AS vader_label,
+    CASE l.sentiment_label
+        WHEN 'negative' THEN 'LLM: Negative'
+        WHEN 'positive' THEN 'LLM: Positive'
+        ELSE 'LLM: Neutral'  -- covers 'neutral' and the rare off-schema 'mixed'
+    END AS llm_label,
+    CASE v.sentiment_label
+        WHEN 'negative' THEN 'VADER: Negative'
+        WHEN 'positive' THEN 'VADER: Positive'
+        ELSE 'VADER: Neutral'
+    END AS vader_label,
     COUNT(*)          AS n_comments
 FROM sentiment_scores l
 JOIN sentiment_scores v
     ON l.comment_id = v.comment_id
     AND v.model_version = 'vader_sentence_filtered_v1'
 WHERE l.model_version = 'llm_stratified_v1'
-GROUP BY l.sentiment_label, v.sentiment_label
-ORDER BY l.sentiment_label, v.sentiment_label;
+GROUP BY 1, 2
+ORDER BY 1, 2;
 
 
 -- ------------------------------------------------------------
@@ -63,8 +82,16 @@ ORDER BY l.sentiment_label, v.sentiment_label;
 -- ------------------------------------------------------------
 CREATE OR REPLACE VIEW llm_vader_confusion_about_sga AS
 SELECT
-    l.sentiment_label AS llm_label,
-    v.sentiment_label AS vader_label,
+    CASE l.sentiment_label
+        WHEN 'negative' THEN 'LLM: Negative'
+        WHEN 'positive' THEN 'LLM: Positive'
+        ELSE 'LLM: Neutral'  -- covers 'neutral' and the rare off-schema 'mixed'
+    END AS llm_label,
+    CASE v.sentiment_label
+        WHEN 'negative' THEN 'VADER: Negative'
+        WHEN 'positive' THEN 'VADER: Positive'
+        ELSE 'VADER: Neutral'
+    END AS vader_label,
     COUNT(*)          AS n_comments
 FROM sentiment_scores l
 JOIN sentiment_scores v
@@ -72,8 +99,8 @@ JOIN sentiment_scores v
     AND v.model_version = 'vader_sentence_filtered_v1'
 WHERE l.model_version = 'llm_stratified_v1'
     AND l.subject_label = 'about_sga'
-GROUP BY l.sentiment_label, v.sentiment_label
-ORDER BY l.sentiment_label, v.sentiment_label;
+GROUP BY 1, 2
+ORDER BY 1, 2;
 
 
 -- ------------------------------------------------------------
