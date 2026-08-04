@@ -74,7 +74,7 @@ timeline marking the MVP announcement and playoff start.*
 
 *Page 2: validation accuracy, the LLM-vs-VADER confusion matrix, and the
 naive-vs-playoff-controlled event study comparison showing the confound
-catch. See `powerbi/sga_sentiment_powerbi.pbix` for the full interactive
+catch. See `powerbi/sga_powerbi.pbix` for the full interactive
 dashboard (Power BI Desktop required).*
 
 Full methodology, all statistical tests, and complete results are in
