@@ -62,6 +62,21 @@ shift around the MVP announcement -- turned out to be confounded with
 the concurrent start of the playoffs, and lost significance once
 controlled for.
 
+## Dashboard
+
+![Same-day vs. next-day sentiment correlation, full-season timeline, and validation metrics](docs/images/page1_screenshot.png)
+
+*Page 1: the same-day/next-day scatter comparison that surfaced the
+headline finding, R² and game-count context, and a full-season sentiment
+timeline marking the MVP announcement and playoff start.*
+
+![LLM vs. VADER confusion matrix and event study comparison](docs/images/page2_screenshot.png)
+
+*Page 2: validation accuracy, the LLM-vs-VADER confusion matrix, and the
+naive-vs-playoff-controlled event study comparison showing the confound
+catch. See `powerbi/sga_sentiment_powerbi.pbix` for the full interactive
+dashboard (Power BI Desktop required).*
+
 Full methodology, all statistical tests, and complete results are in
 [`docs/findings.md`](docs/findings.md).
 
