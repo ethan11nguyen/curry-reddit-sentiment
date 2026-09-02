@@ -114,10 +114,41 @@ and HC1/HC3 robust standard error refits (coefficients and significance
 essentially unchanged from the standard OLS fit) across all three model
 specifications.
 
-**Interpretation**: the same-day null result was a measurement artifact,
-not evidence of no relationship. Once sentiment is measured on a
-timeline that matches when fans actually react, performance is a real,
-statistically significant predictor of Reddit sentiment.
+**Autocorrelation-robust refit (HAC/Newey-West)**: HC1/HC3 relax the
+constant-variance assumption but still assume independent errors - a
+real gap here, since section 2 finds an AR(1) coefficient of 0.935 in
+the daily sentiment series, meaning today's sentiment strongly predicts
+tomorrow's. Refitting with Newey-West (HAC) standard errors, which
+relax both assumptions at once, at maxlags=1 (the specific AR(1)
+persistence found) and maxlags=3 (the Newey-West 1994 rule of thumb for
+n=99), leaves the same-day null unchanged and, if anything, strengthens
+the next-day result: `win_loss` p=0.006, `points` p=0.007, and
+`plus_minus` - only significant at the 90% level under classical/HC3
+SEs (p=0.078) - crosses the conventional 95% threshold under HAC
+(p=0.050). See `scripts/newey_west_comparison.py`.
+
+**Multicollinearity check**: `plus_minus` (point differential) and
+`win_loss` are mechanically related - a team's `plus_minus` is positive
+if and only if it won. Variance Inflation Factors for the full
+four-predictor model are all under 2 (`plus_minus` 1.85, `win_loss`
+1.67 - well short of the conventional VIF>5 concern threshold), but a
+direct specification comparison shows `win_loss` and `plus_minus` still
+share meaningful variance: each coefficient roughly doubles and its
+p-value drops by 1-2 orders of magnitude when the other is dropped from
+the model. `points` is stable across every specification (coefficient
+0.0053-0.0059, p<0.01 throughout) - the most robust of the three
+performance predictors. AIC/BIC favor the full four-predictor model
+over either reduced version, so it remains the model reported above;
+the win_loss/plus_minus sensitivity is a transparency caveat on how
+precisely to read those two coefficients individually, not grounds to
+drop either. See `scripts/multicollinearity_check.py`.
+
+**Interpretation**: the same-day null result was a measurement
+artifact, not evidence of no relationship. Once sentiment is measured
+on a timeline that matches when fans actually react, and standard
+errors are corrected for both heteroskedasticity and day-to-day
+autocorrelation, performance remains a real, statistically significant
+predictor of Reddit sentiment.
 
 ### 2. Is sentiment itself persistent day to day?
 

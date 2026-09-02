@@ -111,8 +111,9 @@ Full methodology, all statistical tests, and complete results are in
   `nba_api`
 - **Sentiment scoring**: VADER, Llama 3.3 70B (Hugging Face Inference
   Providers)
-- **Statistical modeling**: Python, statsmodels (OLS, robust SEs, ARMA,
-  event study, power analysis via noncentral F), scipy
+- **Statistical modeling**: Python, statsmodels (OLS, robust SEs
+  including HAC/Newey-West, ARMA, event study, power analysis via
+  noncentral F, VIF), scipy
 - **Tools**: Git, Docker, DBeaver
 
 ## Repo Structure
@@ -139,7 +140,9 @@ Full methodology, all statistical tests, and complete results are in
 │   ├── export_validation_sample.py           # Exports the 150-comment manual validation sample
 │   ├── check_llm_accuracy.py                 # Compares LLM output against manual labels
 │   ├── test_hf_inference.py                  # Hugging Face Inference Providers connectivity test
-│   └── statistical_modeling.py               # OLS, robust SEs, ARMA, event study, power analysis
+│   ├── statistical_modeling.py               # OLS, robust SEs, ARMA, event study, power analysis
+│   ├── newey_west_comparison.py              # HAC/Newey-West robust SEs, checking autocorrelation-corrected significance
+│   └── multicollinearity_check.py            # VIF + reduced-model comparison for win_loss/plus_minus/points
 │
 ├── docs/
 │   ├── findings.md                           # Full results writeup
